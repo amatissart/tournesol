@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 
 import { makeStyles } from '@material-ui/core/styles';
-import Typography from '@material-ui/core/Typography';
-import Button from '@material-ui/core/Button';
-import Collapse from '@material-ui/core/Collapse';
+import { Box, Button, Collapse, Typography } from '@material-ui/core';
 import ExpandMore from '@material-ui/icons/ExpandMore';
 import ExpandLess from '@material-ui/icons/ExpandLess';
+import { Info as InfoIcon } from '@material-ui/icons';
 
 import type { Comparison, ComparisonCriteriaScore } from 'src/services/openapi';
 import { allCriteriaNames, optionalCriterias } from 'src/utils/constants';
@@ -41,11 +40,13 @@ const ComparisonComponent = ({
   initialComparison,
   videoA,
   videoB,
+  isComparisonPublic,
 }: {
-  submit: (c: Comparison) => void;
+  submit: (c: Comparison) => Promise<void>;
   initialComparison: Comparison | null;
   videoA: string;
   videoB: string;
+  isComparisonPublic?: boolean;
 }) => {
   const classes = useStyles();
   const castToComparison = (c: Comparison | null): Comparison => {
@@ -76,9 +77,9 @@ const ComparisonComponent = ({
     [initialComparison]
   );
 
-  const submitComparison = () => {
+  const submitComparison = async () => {
+    await submit(comparison);
     setSubmitted(true);
-    submit(comparison);
   };
 
   const handleSliderChange = (criteria: string, score: number | undefined) => {
@@ -123,6 +124,23 @@ const ComparisonComponent = ({
   return (
     <div className={classes.root}>
       <div className={classes.centered}>
+        <Box
+          minWidth="80%"
+          p={2}
+          sx={{ bgcolor: '#eef5ff' }}
+          display="flex"
+          alignItems="center"
+          gridGap="8px"
+          borderRadius="8px"
+          justifyContent="center"
+        >
+          <InfoIcon />
+          {isComparisonPublic &&
+            (initialComparison
+              ? 'This comparison is part of the public dataset.'
+              : 'After submission, this comparison will be included in the public dataset.')}
+        </Box>
+
         {allCriteriaNames
           .filter(([c]) => !optionalCriterias[c])
           .map(([criteria, criteria_name]) => (
