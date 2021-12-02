@@ -310,7 +310,7 @@ function VideoCard({
         )}
       </Grid>
       {settings.length > 0 && (
-        <Grid item xs={12}>
+        <Grid item xs={12} style={{ padding: 0 }}>
           <Collapse in={settingsVisible || !isSmallScreen}>
             <Box
               paddingY={1}

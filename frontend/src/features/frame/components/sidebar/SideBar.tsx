@@ -1,6 +1,6 @@
 import React from 'react';
 import clsx from 'clsx';
-import { useLocation, useHistory } from 'react-router-dom';
+import { useLocation, Link } from 'react-router-dom';
 import {
   ListItem,
   ListItemText,
@@ -21,6 +21,7 @@ import {
   Compare as CompareIcon,
   WatchLater as WatchLaterIcon,
   ListAlt as ListIcon,
+  Stars as StarsIcon,
   VideoLibrary,
 } from '@material-ui/icons';
 
@@ -90,7 +91,6 @@ const SideBar = () => {
   const dispatch = useAppDispatch();
   const theme = useTheme();
   const isSmallScreen = useMediaQuery(theme.breakpoints.down('sm'));
-  const history = useHistory();
   const location = useLocation();
 
   const isItemSelected = (url: string) => url === location.pathname;
@@ -112,6 +112,11 @@ const SideBar = () => {
       targetUrl: '/comparisons',
       IconComponent: ListIcon,
       displayText: 'My comparisons',
+    },
+    {
+      targetUrl: '/ratings',
+      IconComponent: StarsIcon,
+      displayText: 'My rated videos',
     },
     {
       targetUrl: '/rate_later',
@@ -151,8 +156,9 @@ const SideBar = () => {
               key={displayText}
               button
               selected={selected}
-              onClick={() => history.push(targetUrl)}
               className={classes.listItem}
+              component={Link}
+              to={targetUrl}
             >
               <ListItemIcon>
                 <IconComponent
