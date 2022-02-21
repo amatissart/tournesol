@@ -43,24 +43,25 @@ def compute_individual_score(username, criteria):
     # theta_star = K^-1 * L
     theta_star = pd.Series(np.linalg.solve(K, L), index=L.index)
 
-
-    ## Compute uncertainties
-    #
-    # if len(scores) < 2:
-    #     delta_star = None
-    # else:
-    #     theta_star_numpy = theta_star.to_numpy()
-    #     theta_star_ab = pd.DataFrame(
-    #         np.subtract.outer(theta_star_numpy, theta_star_numpy),
-    #         index=theta_star.index,
-    #         columns=theta_star.index
-    #     )
-    #     sigma2 = np.nansum(k * (l - theta_star_ab)**2) / 2 / (len(scores) - 1)
-    #
-    #     # FIXME: K.sum() always equals to ALPHA by definition.
-    #     delta_star = np.sqrt(sigma2) / np.sqrt(K.sum(axis=1))
-
+    # Compute uncertainties
+    if len(scores) <= 1:
+        delta_star = None
+    else:
+        theta_star_numpy = theta_star.to_numpy()
+        theta_star_ab = pd.DataFrame(
+            np.subtract.outer(theta_star_numpy, theta_star_numpy),
+            index=theta_star.index,
+            columns=theta_star.index
+        )
+        sigma2 = np.nansum(k * (l - theta_star_ab)**2) / 2 / (len(scores) - 1)
+        delta_star = pd.Series(
+            np.sqrt(sigma2) / np.sqrt(np.diag(K)),
+            index=K.index
+        )
 
     # r.loc[a:b] is negative when a is prefered to b.
     # The sign of the result is inverted.
-    return -1 * theta_star
+    return pd.DataFrame({
+        "score": -1 * theta_star,
+        "uncertainty": delta_star,
+    })
