@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from django.db.models import F, Case, When
+from django.db.models import F, Case, When, Q
 
 from tournesol.models import ContributorRatingCriteriaScore
 from core.models import User
@@ -84,6 +84,7 @@ def compute_scaling(
         reference_users = df.user_id.unique()
 
     s_dict = {}
+    delta_s_dict = {}
     for user_n in users_to_compute:
         user_scores = df[df.user_id == user_n].drop("user_id", axis=1)
         s_nqm = []
@@ -124,16 +125,25 @@ def compute_scaling(
             delta_s_nqm.append(QrUnc(1, 1, 1, s_nqmab, delta_s_nqmab, qr_med=s))
             s_weights.append(scaling_weights[user_m])
 
-        theta_inf = np.max(user_scores.score)
+        s_weights = np.array(s_weights)
+        theta_inf = np.max(user_scores.score.abs())
         s_nqm = np.array(s_nqm)
         delta_s_nqm = np.array(delta_s_nqm)
-        s_dict[user_n] = 1 + BrMean(
-            8 * W * theta_inf, np.array(s_weights), s_nqm - 1, delta_s_nqm
-        )
-
-    s_nq = pd.Series(s_dict)
+        if compute_uncertainties:
+            qr_med = QrMed(
+                8 * W * theta_inf, s_weights, s_nqm - 1, delta_s_nqm
+            )
+            s_dict[user_n] = 1 + qr_med
+            delta_s_dict[user_n] = QrUnc(
+                8 * W * theta_inf, s_weights, s_nqm - 1, delta_s_nqm, qr_med=qr_med
+            )
+        else:
+            s_dict[user_n] = 1 + BrMean(
+                8 * W * theta_inf, s_weights, s_nqm - 1, delta_s_nqm
+            )
 
     tau_dict = {}
+    delta_tau_dict = {}
     for user_n in users_to_compute:
         user_scores = df[df.user_id == user_n].drop("user_id", axis=1)
         tau_nqm = []
@@ -149,27 +159,53 @@ def compute_scaling(
             m_scores = m_scores[m_scores.uid.isin(common_uids)]
             n_scores = user_scores[user_scores.uid.isin(common_uids)]
 
-            tau_nqmab = s_nq[user_m] * m_scores.score - s_nq[user_n] * n_scores.score
+            tau_nqmab = s_dict[user_m] * m_scores.score - s_dict[user_n] * n_scores.score
             delta_tau_nqmab = (
-                s_nq[user_n] * n_scores.uncertainty
-                + s_nq[user_m] * m_scores.uncertainty
+                s_dict[user_n] * n_scores.uncertainty
+                + s_dict[user_m] * m_scores.uncertainty
             )
             tau = QrMed(1, 1, tau_nqmab, delta_tau_nqmab)
             tau_nqm.append(tau)
             delta_tau_nqm.append(QrUnc(1, 1, 1, tau_nqmab, delta_tau_nqmab, qr_med=tau))
             s_weights.append(scaling_weights[user_m])
 
+        s_weights = np.array(s_weights)
         tau_nqm = np.array(tau_nqm)
         delta_tau_nqm = np.array(delta_tau_nqm)
-        tau_dict[user_n] = BrMean(8 * W, np.array(s_weights), tau_nqm, delta_tau_nqm)
+        if compute_uncertainties:
+            qr_med = QrMed(8*W, s_weights, tau_nqm, delta_tau_nqm)
+            tau_dict[user_n] = qr_med
+            delta_tau_dict[user_n] = QrUnc(8*W, 1, s_weights, tau_nqm, delta_tau_nqm, qr_med=qr_med)
+        else:
+            tau_dict[user_n] = BrMean(8 * W, s_weights, tau_nqm, delta_tau_nqm)
 
     tau_nq = pd.Series(tau_dict)
-    return s_nq, tau_nq
-
+    return pd.DataFrame({
+        "s": s_dict,
+        "tau": tau_dict,
+        "delta_s": delta_s_dict,
+        "delta_tau": delta_tau_dict
+    })
 
 def compute_scaling_for_supertrusted():
     df = get_contributor_criteria_score(User.supertrusted_users(), poll_name="videos", criteria="largely_recommended")
     return compute_scaling(df)
 
-def compute_scaling_for_all_users():
+def compute_scaling_for_all_users(pre_scaling):
+    df = get_contributor_criteria_score(User.objects.all(), poll_name="videos", criteria="largely_recommended")
+    non_supertrusted = User.objects.exclude(pk__in=User.supertrusted_users())
+    trusted_and_supertrusted = User.objects.filter(
+        Q(pk__in=User.supertrusted_users()) | Q(pk__in=User.trusted_users())
+    ).distinct()
+
+    for (user_id, s) in scaling_s.items():
+        tau = scaling_tau.get(user_id, 0)
+        df[df.user_id==user_id]["score"] *= s
+        df[df.user_id==user_id]["score"] += tau
+        df[df.user_id==user_id]["uncertainty"] *= s
+
+
+    # TODO apply scaling for all users
+
+
     raise NotImplementedError

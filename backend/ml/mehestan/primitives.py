@@ -46,7 +46,7 @@ def QrUnc(
 ):
     if qr_med is None:
         qr_med = QrMed(W, w, x, delta)
-    qr_dev = QrDev(W, default_dev, w, x, delta)
+    qr_dev = QrDev(W, default_dev, w, x, delta, qr_med=qr_med)
     delta_2 = delta ** 2
     h = W + np.sum(
         w * np.minimum(1, delta_2 * (delta_2 + (x - qr_med) ** 2) ** (-3 / 2))
