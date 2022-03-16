@@ -7,7 +7,6 @@ ALPHA = 0.01
 public_dataset = pd.read_csv('~/workspace/data/tournesol_public_export_2022-02-18.csv')
 
 def compute_individual_score(username, criteria):
-
     df = public_dataset[
         (public_dataset.public_username==username)
         & (public_dataset.criteria==criteria)
