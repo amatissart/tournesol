@@ -1,6 +1,7 @@
 import logging
 
 from django.core.management.base import BaseCommand
+from backend.ml.inputs import MlInputFromDb
 
 from ml.core import TOURNESOL_DEV
 from ml.dev.experiments import run_experiment
@@ -26,6 +27,7 @@ class Command(BaseCommand):
     help = 'Runs the ml'
 
     def handle(self, *args, **options):
+        ml_input = MlInputFromDb(poll_name="videos")
         comparison_data_trusted = fetch_data()
         comparison_data_not_trusted = fetch_data(trusted=False)
         if TOURNESOL_DEV:

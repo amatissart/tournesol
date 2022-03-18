@@ -1,9 +1,7 @@
-from asyncore import poll
 from django.db import transaction
 from django.db.models import F
 import numpy as np
 import pandas as pd
-from backend.ml.mehestan.global import POLL_NAME
 
 
 from tournesol.models import (
@@ -27,19 +25,6 @@ def get_comparisons_scores(username, criteria):
     df = df[["video_a", "video_b", "score"]]
     df.columns = ["entity_a", "entity_b", "score"]
     return df
-
-
-def get_comparisons_scores_from_db(poll_name, criteria):
-    values = ComparisonCriteriaScore.objects.filter(
-        comparison__poll__name=poll_name,
-        criteria=criteria,
-    ).values(
-        "score",
-        entity_a=F("comparison__entity_1_id"),
-        entity_b=F("comparison__entity_2_id"),
-        user_id=F("comparison__user_id"),
-    )
-    return pd.DataFrame(values)
 
 
 def compute_individual_score(scores):
@@ -80,7 +65,8 @@ def compute_individual_score(scores):
 
     # Compute uncertainties
     if len(scores) <= 1:
-        delta_star = None
+        # FIXME: default value for uncertainty?
+        delta_star = 0.0
     else:
         theta_star_numpy = theta_star.to_numpy()
         theta_star_ab = pd.DataFrame(
@@ -93,31 +79,33 @@ def compute_individual_score(scores):
 
     # r.loc[a:b] is negative when a is prefered to b.
     # The sign of the result is inverted.
-    return pd.DataFrame(
+    result = pd.DataFrame(
         {
             "score": -1 * theta_star,
             "uncertainty": delta_star,
         }
     )
+    result.index.name = "entity_id"
+    return result
 
 
-def save_individual_scores(user_id, scores):
-    rating_ids = {
-        entity_id: rating_id
-        for rating_id, entity_id in ContributorRating.objects.filter(
-            poll__name=POLL_NAME,
-            user_id=user_id
-        ).values_list("id", "entity_id")
-    }
+# def save_individual_scores(user_id, scores):
+#     rating_ids = {
+#         entity_id: rating_id
+#         for rating_id, entity_id in ContributorRating.objects.filter(
+#             poll__name=POLL_NAME,
+#             user_id=user_id
+#         ).values_list("id", "entity_id")
+#     }
 
-    with transaction.atomic():
-        ContributorRatingCriteriaScore.objects.filter(
-            contributor_rating__user_id=user_id,
-            contributor_rating__poll__name=POLL_NAME,
-
-        )
-        ratings = [
-            ContributorRatingCriteriaScore(pk=entity_id,  )
-            for entity_id, columns in scores.iterrows()
-        ]
-    # TODO
+#     with transaction.atomic():
+#         ContributorRatingCriteriaScore.objects.filter(
+#             contributor_rating__user_id=user_id,
+#             contributor_rating__poll__name=POLL_NAME,
+#             criteria=criteria
+#         )
+#         ratings = [
+#             ContributorRatingCriteriaScore(pk=entity_id,  )
+#             for entity_id, columns in scores.iterrows()
+#         ]
+#     # TODO

@@ -4,8 +4,8 @@ from django.core.management.base import BaseCommand
 
 from core.models import User
 from ml.core import TOURNESOL_DEV, ml_run
+from ml.inputs import MlInputFromDb
 from tournesol.models import (
-    ComparisonCriteriaScore,
     ContributorRating,
     ContributorRatingCriteriaScore,
     Entity,
@@ -49,38 +49,6 @@ USAGE:
     mode
 - run "python manage.py ml_train"
 """
-
-
-def fetch_data(poll, trusted_only=True):
-    """Fetches the data from the Comparisons model
-
-    Returns:
-    - comparison_data: list of
-        [   contributor_id: int, video_id_1: int, video_id_2: int,
-            criteria: str, score: float, weight: float  ]
-    """
-    comparisons_queryset = ComparisonCriteriaScore.objects.filter(
-        comparison__poll=poll
-    ).prefetch_related("comparison")
-    if trusted_only:
-        comparisons_queryset = comparisons_queryset.filter(
-            comparison__user__in=User.trusted_users()
-        )
-
-    comparison_data = [
-        [
-            ccs.comparison.user_id,
-            ccs.comparison.entity_1_id,
-            ccs.comparison.entity_2_id,
-            ccs.criteria,
-            ccs.score,
-            ccs.weight,
-        ]
-        for ccs in comparisons_queryset
-    ]
-
-    # TODO: Use a dataframe and `list(map(list, df.itertuples(index=False)))`
-    return comparison_data
 
 
 def save_data(video_scores, contributor_rating_scores, poll, trusted_only=True):
@@ -183,11 +151,16 @@ def save_data(video_scores, contributor_rating_scores, poll, trusted_only=True):
 
 def process(trusted_only=True):
     for poll in Poll.objects.all():
+        ml_input = MlInputFromDb(poll_name=poll.name)
         poll_criterias_list = poll.criterias_list
-        poll_comparison_data = fetch_data(poll=poll, trusted_only=trusted_only)
+        poll_comparison_df = ml_input.get_comparisons(trusted_only=trusted_only)
+        poll_comparison_data = list(map(list, poll_comparison_df.itertuples(index=False)))
+
+        # Licchavi
         glob_score, loc_score = ml_run(
             poll_comparison_data, criterias=poll_criterias_list, save=True, verb=-1
         )
+
         save_data(glob_score, loc_score, poll, trusted_only=trusted_only)
 
 
