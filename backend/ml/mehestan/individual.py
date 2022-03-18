@@ -1,28 +1,64 @@
+from asyncore import poll
+from django.db import transaction
+from django.db.models import F
 import numpy as np
 import pandas as pd
+from backend.ml.mehestan.global import POLL_NAME
+
+
+from tournesol.models import (
+    ComparisonCriteriaScore,
+    ContributorRatingCriteriaScore,
+    ContributorRating,
+)
 
 R_MAX = 10
 ALPHA = 0.01
 
-public_dataset = pd.read_csv('~/workspace/data/tournesol_public_export_2022-02-18.csv')
 
-def compute_individual_score(username, criteria):
+def get_comparisons_scores(username, criteria):
+    public_dataset = pd.read_csv(
+        "~/workspace/data/tournesol_public_export_2022-02-18.csv"
+    )
     df = public_dataset[
-        (public_dataset.public_username==username)
-        & (public_dataset.criteria==criteria)
+        (public_dataset.public_username == username)
+        & (public_dataset.criteria == criteria)
     ]
-    scores = df[["video_a","video_b","score"]]
+    df = df[["video_a", "video_b", "score"]]
+    df.columns = ["entity_a", "entity_b", "score"]
+    return df
 
-    scores_sym = pd.concat([
-        scores,
-        pd.DataFrame({
-            "video_a": scores.video_b,
-            "video_b": scores.video_a,
-            "score": -1 * scores.score,
-        })
-    ])
 
-    r = scores_sym.pivot(index="video_a", columns="video_b", values="score")
+def get_comparisons_scores_from_db(poll_name, criteria):
+    values = ComparisonCriteriaScore.objects.filter(
+        comparison__poll__name=poll_name,
+        criteria=criteria,
+    ).values(
+        "score",
+        entity_a=F("comparison__entity_1_id"),
+        entity_b=F("comparison__entity_2_id"),
+        user_id=F("comparison__user_id"),
+    )
+    return pd.DataFrame(values)
+
+
+def compute_individual_score(scores):
+    scores = scores[["entity_a", "entity_b", "score"]]
+
+    scores_sym = pd.concat(
+        [
+            scores,
+            pd.DataFrame(
+                {
+                    "entity_a": scores.entity_b,
+                    "entity_b": scores.entity_a,
+                    "score": -1 * scores.score,
+                }
+            ),
+        ]
+    )
+
+    r = scores_sym.pivot(index="entity_a", columns="entity_b", values="score")
     assert r.index.equals(r.columns)
 
     r_tilde = r / (1.0 + R_MAX)
@@ -50,17 +86,38 @@ def compute_individual_score(username, criteria):
         theta_star_ab = pd.DataFrame(
             np.subtract.outer(theta_star_numpy, theta_star_numpy),
             index=theta_star.index,
-            columns=theta_star.index
+            columns=theta_star.index,
         )
-        sigma2 = np.nansum(k * (l - theta_star_ab)**2) / 2 / (len(scores) - 1)
-        delta_star = pd.Series(
-            np.sqrt(sigma2) / np.sqrt(np.diag(K)),
-            index=K.index
-        )
+        sigma2 = np.nansum(k * (l - theta_star_ab) ** 2) / 2 / (len(scores) - 1)
+        delta_star = pd.Series(np.sqrt(sigma2) / np.sqrt(np.diag(K)), index=K.index)
 
     # r.loc[a:b] is negative when a is prefered to b.
     # The sign of the result is inverted.
-    return pd.DataFrame({
-        "score": -1 * theta_star,
-        "uncertainty": delta_star,
-    })
+    return pd.DataFrame(
+        {
+            "score": -1 * theta_star,
+            "uncertainty": delta_star,
+        }
+    )
+
+
+def save_individual_scores(user_id, scores):
+    rating_ids = {
+        entity_id: rating_id
+        for rating_id, entity_id in ContributorRating.objects.filter(
+            poll__name=POLL_NAME,
+            user_id=user_id
+        ).values_list("id", "entity_id")
+    }
+
+    with transaction.atomic():
+        ContributorRatingCriteriaScore.objects.filter(
+            contributor_rating__user_id=user_id,
+            contributor_rating__poll__name=POLL_NAME,
+
+        )
+        ratings = [
+            ContributorRatingCriteriaScore(pk=entity_id,  )
+            for entity_id, columns in scores.iterrows()
+        ]
+    # TODO

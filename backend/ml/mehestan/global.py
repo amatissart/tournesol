@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from django.db.models import F, Case, When, Q
+from django.db.models import F, Case, When, Q, QuerySet
 
 from tournesol.models import ContributorRatingCriteriaScore
 from core.models import User
@@ -25,14 +25,6 @@ POLL_NAME = "videos"
 CRITERIA_NAME = "largely_recommended"
 
 
-def get_trusted_user_ids():
-    return set(User.trusted_users().values_list("pk", flat=True))
-
-
-def get_supertrusted_user_ids():
-    return set(User.supertrusted_users().values_list("pk", flat=True))
-
-
 def get_user_scaling_weights():
     values = (
         User.objects.all()
@@ -51,7 +43,10 @@ def get_user_scaling_weights():
 
 
 def get_contributor_criteria_score(
-    users, poll_name, criteria, with_voting_weights=False
+    users: QuerySet[User],
+    poll_name: str,
+    criteria: str,
+    with_voting_weights: bool = False,
 ):
     queryset = ContributorRatingCriteriaScore.objects.filter(
         contributor_rating__poll__name=poll_name,

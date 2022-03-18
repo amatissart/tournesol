@@ -79,6 +79,7 @@ def fetch_data(poll, trusted_only=True):
         for ccs in comparisons_queryset
     ]
 
+    # TODO: Use a dataframe and `list(map(list, df.itertuples(index=False)))`
     return comparison_data
 
 
