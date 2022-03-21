@@ -102,9 +102,6 @@ def compute_scaling(
     scaling_weights = get_user_scaling_weights(ml_input)
     df = df.rename({"entity_id": "uid"}, axis=1)
 
-    # TODO: 0 is a correct value to fill uncertainty ?
-    df.uncertainty.fillna(0, inplace=True)
-
     def get_significantly_different_pairs(scores: pd.DataFrame):
         # To optimize: this cross product may be expensive in memory
         return (
