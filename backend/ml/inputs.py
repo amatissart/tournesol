@@ -55,7 +55,7 @@ class MlInputFromPublicDataset(MlInput):
         ))
         df = pd.DataFrame([*user_entities_pairs], columns=["user_id", "entity_id"])
         df["is_public"] = True
-        top_users = df.value_counts("user_id").index[:5]
+        top_users = df.value_counts("user_id").index[:6]
         df["is_trusted"] = df["is_supertrusted"] = df["user_id"].isin(top_users)
         return df
 

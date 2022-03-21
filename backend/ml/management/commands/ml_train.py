@@ -1,6 +1,7 @@
 import logging
 
 from django.core.management.base import BaseCommand
+from tournesol.models.poll import ALGORITHM_LICCHAVI, ALGORITHM_MEHESTAN
 
 from core.models import User
 from ml.core import TOURNESOL_DEV, ml_run
@@ -38,7 +39,6 @@ Notations:
 - VARIABLE_NAME : global variable
 
 Structure:
-- fetch_data() provides data from the database
 - ml_run() uses this data as input, trains via shape_train_predict()
      and returns video scores
 - save_data() takes these scores and save them to the database
@@ -149,19 +149,17 @@ def save_data(video_scores, contributor_rating_scores, poll, trusted_only=True):
     )
 
 
-def process(trusted_only=True):
-    for poll in Poll.objects.all():
-        ml_input = MlInputFromDb(poll_name=poll.name)
-        poll_criterias_list = poll.criterias_list
-        poll_comparison_df = ml_input.get_comparisons(trusted_only=trusted_only)
-        poll_comparison_data = list(map(list, poll_comparison_df.itertuples(index=False)))
+def process_licchavi(poll, trusted_only=True):
+    ml_input = MlInputFromDb(poll_name=poll.name)
+    poll_criterias_list = poll.criterias_list
+    poll_comparison_df = ml_input.get_comparisons(trusted_only=trusted_only)
+    poll_comparison_data = list(map(list, poll_comparison_df.itertuples(index=False)))
 
-        # Licchavi
-        glob_score, loc_score = ml_run(
-            poll_comparison_data, criterias=poll_criterias_list, save=True, verb=-1
-        )
+    glob_score, loc_score = ml_run(
+        poll_comparison_data, criterias=poll_criterias_list, save=True, verb=-1
+    )
 
-        save_data(glob_score, loc_score, poll, trusted_only=trusted_only)
+    save_data(glob_score, loc_score, poll, trusted_only=trusted_only)
 
 
 class Command(BaseCommand):
@@ -171,7 +169,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-untrusted",
             action="store_true",
-            help="Skip ML run on untrusted users",
+            help="Skip ML run on untrusted users (for Licchavi only)",
         )
 
     def handle(self, *args, **options):
@@ -179,11 +177,17 @@ class Command(BaseCommand):
         if TOURNESOL_DEV:
             logging.error("You must turn TOURNESOL_DEV to 0 to use this")
         else:  # production
-            # Run for trusted users
-            logging.debug("Process on trusted users")
-            process()
+            for poll in Poll.objects.all():
+                if poll.algorighm == ALGORITHM_LICCHAVI:
+                    # Run for trusted users
+                    logging.debug("Process on trusted users")
+                    process_licchavi(poll, trusted_only=True)
 
-            if not skip_untrusted:
-                # Run for all users including non trusted users
-                logging.debug("Process on all users")
-                process(trusted_only=False)
+                    if not skip_untrusted:
+                        # Run for all users including non trusted users
+                        logging.debug("Process on all users")
+                        process_licchavi(poll, trusted_only=False)
+
+                elif poll.algorithm == ALGORITHM_MEHESTAN:
+                    # TODO
+                    pass

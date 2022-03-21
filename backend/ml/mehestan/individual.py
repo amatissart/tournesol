@@ -29,6 +29,8 @@ def get_comparisons_scores(username, criteria):
 
 def compute_individual_score(scores):
     scores = scores[["entity_a", "entity_b", "score"]]
+    if len(scores) <= 1:
+        return None
 
     scores_sym = pd.concat(
         [
@@ -49,7 +51,8 @@ def compute_individual_score(scores):
     r_tilde = r / (1.0 + R_MAX)
     r_tilde2 = r_tilde ** 2
 
-    l = r_tilde / np.sqrt(1.0 - r_tilde2)
+    # r.loc[a:b] is negative when a is prefered to b.
+    l = -1.0 * r_tilde / np.sqrt(1.0 - r_tilde2)
     k = (1.0 - r_tilde2) ** 3
 
     L = k.mul(l).sum(axis=1)
@@ -64,24 +67,18 @@ def compute_individual_score(scores):
     theta_star = pd.Series(np.linalg.solve(K, L), index=L.index)
 
     # Compute uncertainties
-    if len(scores) <= 1:
-        # FIXME: default value for uncertainty?
-        delta_star = 0.0
-    else:
-        theta_star_numpy = theta_star.to_numpy()
-        theta_star_ab = pd.DataFrame(
-            np.subtract.outer(theta_star_numpy, theta_star_numpy),
-            index=theta_star.index,
-            columns=theta_star.index,
-        )
-        sigma2 = np.nansum(k * (l - theta_star_ab) ** 2) / 2 / (len(scores) - 1)
-        delta_star = pd.Series(np.sqrt(sigma2) / np.sqrt(np.diag(K)), index=K.index)
+    theta_star_numpy = theta_star.to_numpy()
+    theta_star_ab = pd.DataFrame(
+        np.subtract.outer(theta_star_numpy, theta_star_numpy),
+        index=theta_star.index,
+        columns=theta_star.index,
+    )
+    sigma2 = np.nansum(k * (l - theta_star_ab) ** 2) / 2 / (len(scores) - 1)
+    delta_star = pd.Series(np.sqrt(sigma2) / np.sqrt(np.diag(K)), index=K.index)
 
-    # r.loc[a:b] is negative when a is prefered to b.
-    # The sign of the result is inverted.
     result = pd.DataFrame(
         {
-            "score": -1 * theta_star,
+            "score": theta_star,
             "uncertainty": delta_star,
         }
     )

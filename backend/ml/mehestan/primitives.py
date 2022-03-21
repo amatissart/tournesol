@@ -1,7 +1,7 @@
 from typing import Union
 import pandas as pd
 import numpy as np
-from scipy.optimize import bisect
+from scipy.optimize import brentq
 
 EPSILON = 1e-6
 
@@ -10,7 +10,8 @@ def QrMed(W: float, w: Union[pd.Series, float], x: pd.Series, delta: pd.Series):
     delta_2 = delta ** 2
 
     def L_prime(m: float):
-        return W * m - np.sum(w * (x - m) / np.sqrt(delta_2 + (x - m) ** 2))
+        x_minus_m = x - m
+        return W * m - np.sum(w * x_minus_m / np.sqrt(delta_2 + x_minus_m ** 2))
 
     m_low = -1.0
     while L_prime(m_low) > 0:
@@ -20,7 +21,7 @@ def QrMed(W: float, w: Union[pd.Series, float], x: pd.Series, delta: pd.Series):
     while L_prime(m_up) < 0:
         m_up *= 2
 
-    return bisect(L_prime, m_low, m_up, xtol=EPSILON)
+    return brentq(L_prime, m_low, m_up, xtol=EPSILON)
 
 
 def QrDev(

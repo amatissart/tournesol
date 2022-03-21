@@ -1,14 +1,10 @@
-from django.db import DatabaseError
+import logging
 import pandas as pd
 import numpy as np
-from django.db.models import F, Case, When, Q, QuerySet
 from ml.inputs import MlInput
 
-from tournesol.models import ContributorRatingCriteriaScore
-from core.models import User
 
 from .primitives import BrMean, QrMed, QrUnc, QrDev
-
 
 W = 5.0
 
@@ -21,10 +17,6 @@ VOTE_WEIGHT_TRUSTED_PRIVATE = 0.5
 
 TOTAL_VOTE_WEIGHT_NONTRUSTED_DEFAULT = 2.0  # w_⨯,default
 TOTAL_VOTE_WEIGHT_NONTRUSTED_FRACTION = 0.1  # f_⨯
-
-# FIXME: Temporary
-POLL_NAME = "videos"
-CRITERIA_NAME = "largely_recommended"
 
 
 # def get_user_scaling_weights():
@@ -45,51 +37,16 @@ CRITERIA_NAME = "largely_recommended"
 
 
 def get_user_scaling_weights(ml_input: MlInput):
-    ratings_properties = ml_input.get_ratings_properties()[["user_id", "is_trusted", "is_supertrusted"]]
+    ratings_properties = ml_input.get_ratings_properties()[
+        ["user_id", "is_trusted", "is_supertrusted"]
+    ]
     df = ratings_properties.groupby("user_id").first()
     df["scaling_weight"] = SCALING_WEIGHT_NONTRUSTED
+    df["scaling_weight"].mask(df.is_trusted, SCALING_WEIGHT_TRUSTED, inplace=True)
     df["scaling_weight"].mask(
-        df.is_trusted,
-        SCALING_WEIGHT_TRUSTED,
-        inplace=True
-    )
-    df["scaling_weight"].mask(
-        df.is_supertrusted,
-        SCALING_WEIGHT_SUPERTRUSTED,
-        inplace=True
+        df.is_supertrusted, SCALING_WEIGHT_SUPERTRUSTED, inplace=True
     )
     return df["scaling_weight"].to_dict()
-
-
-# def get_contributor_criteria_score(
-#     users: QuerySet[User],
-#     poll_name: str,
-#     criteria: str,
-#     # with_is_trusted: bool = False,
-# ):
-#     queryset = ContributorRatingCriteriaScore.objects.filter(
-#         contributor_rating__poll__name=poll_name,
-#         contributor_rating__user__in=users,
-#         criteria=criteria,
-#     ).annotate(
-#         is_trusted=Case(
-#             When(
-#                 contributor_rating__user__in=User.trusted_users(),
-#                 then=True
-#             ),
-#             default=False
-#         )
-#     )
-
-#     values = queryset.values(
-#         "score",
-#         "uncertainty",
-#         "is_trusted",
-#         user_id=F("contributor_rating__user__pk"),
-#         uid=F("contributor_rating__entity__uid"),
-#         is_public=F("contributor_rating__is_public"),
-#     )
-#     return pd.DataFrame(values)
 
 
 def compute_scaling(
@@ -104,29 +61,49 @@ def compute_scaling(
 
     def get_significantly_different_pairs(scores: pd.DataFrame):
         # To optimize: this cross product may be expensive in memory
-        return (
-            scores.merge(scores, how="cross", suffixes=("_a", "_b"))
-            .query("uid_a < uid_b")
-            .query("abs(score_a - score_b) >= 2*(uncertainty_a + uncertainty_b)")
-            .set_index(["uid_a", "uid_b"])
+        left, right = np.triu_indices(len(scores), k=1)
+        pairs = (
+            scores.iloc[left]
+            .reset_index(drop=True)
+            .join(
+                scores.iloc[right].reset_index(drop=True),
+                lsuffix="_a",
+                rsuffix="_b",
+            )
         )
+        pairs.set_index(["uid_a", "uid_b"], inplace=True)
+        pairs.query(
+            "abs(score_a - score_b) >= 2*(uncertainty_a + uncertainty_b)", inplace=True
+        )
+        return pairs
 
     if users_to_compute is None:
-        users_to_compute = df.user_id.unique()
+        users_to_compute = set(df.user_id.unique())
+    else:
+        users_to_compute = set(users_to_compute)
 
     if reference_users is None:
-        reference_users = df.user_id.unique()
+        reference_users = set(df.user_id.unique())
+    else:
+        reference_users = set(reference_users)
 
     s_dict = {}
     delta_s_dict = {}
-    for user_n in users_to_compute:
-        user_scores = df[df.user_id == user_n].drop("user_id", axis=1)
+
+    for (user_n, user_scores) in df.groupby("user_id"):
+        if user_n not in users_to_compute:
+            continue
+        user_scores.drop("user_id", axis=1, inplace=True)
+        user_scores_uids = set(user_scores.uid)
         s_nqm = []
         delta_s_nqm = []
         s_weights = []
         for user_m in (u for u in reference_users if u != user_n):
             m_scores = df[df.user_id == user_m].drop("user_id", axis=1)
-            common_uids = set(user_scores.uid).intersection(m_scores.uid)
+            common_uids = user_scores_uids.intersection(m_scores.uid)
+
+            if len(common_uids) == 0:
+                continue
 
             m_scores = m_scores[m_scores.uid.isin(common_uids)]
             n_scores = user_scores[user_scores.uid.isin(common_uids)]
@@ -176,29 +153,31 @@ def compute_scaling(
 
     tau_dict = {}
     delta_tau_dict = {}
-    for user_n in users_to_compute:
-        user_scores = df[df.user_id == user_n].drop("user_id", axis=1)
+    for (user_n, user_scores) in df.groupby("user_id"):
+        if user_n not in users_to_compute:
+            continue
+        user_scores.drop("user_id", axis=1, inplace=True)
         tau_nqm = []
         delta_tau_nqm = []
         s_weights = []
         for user_m in (u for u in reference_users if u != user_n):
             m_scores = df[df.user_id == user_m].drop("user_id", axis=1)
-            common_uids = set(user_scores.uid).intersection(m_scores.uid)
+            common_uids = list(set(user_scores.uid).intersection(m_scores.uid))
 
             if len(common_uids) == 0:
                 continue
 
-            m_scores = m_scores[m_scores.uid.isin(common_uids)].set_index("uid")
-            n_scores = user_scores[user_scores.uid.isin(common_uids)].set_index("uid")
+            m_scores = m_scores.set_index("uid").loc[common_uids]
+            n_scores = user_scores.set_index("uid").loc[common_uids]
 
             tau_nqmab = (
-                s_dict[user_m] * m_scores.score - s_dict[user_n] * n_scores.score
+                s_dict.get(user_m, 1) * m_scores.score - s_dict[user_n] * n_scores.score
             )
             delta_tau_nqmab = (
                 s_dict[user_n] * n_scores.uncertainty
-                + s_dict[user_m] * m_scores.uncertainty
+                + s_dict.get(user_m, 1) * m_scores.uncertainty
             )
-            
+
             tau = QrMed(1, 1, tau_nqmab, delta_tau_nqmab)
             tau_nqm.append(tau)
             delta_tau_nqm.append(QrUnc(1, 1, 1, tau_nqmab, delta_tau_nqmab, qr_med=tau))
@@ -238,12 +217,14 @@ def get_scaling_for_supertrusted(ml_input: MlInput, individual_scores: pd.DataFr
     return compute_scaling(df, ml_input=ml_input)
 
 
-def get_scaled_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
+def get_global_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
     supertrusted_scaling = get_scaling_for_supertrusted(ml_input, individual_scores)
     rp = ml_input.get_ratings_properties()
 
     non_supertrusted = rp[~rp.is_supertrusted]["user_id"].unique()
-    trusted_and_supertrusted = rp[(rp.is_supertrusted) | (rp.is_trusted)]["user_id"].unique()
+    trusted_and_supertrusted = rp[(rp.is_supertrusted) | (rp.is_trusted)][
+        "user_id"
+    ].unique()
 
     rp.set_index(["user_id", "entity_id"], inplace=True)
     df = individual_scores.join(rp, on=["user_id", "entity_id"], how="inner")
@@ -276,52 +257,50 @@ def get_scaled_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
     df["score"] = df["score"] * df["s"] + df["tau"]
     df.drop(["s", "tau", "delta_s", "delta_tau"], axis=1, inplace=True)
 
+    df[
+        "voting_weight"
+    ] = 0  # Voting weight for non trusted users will be computed per entity
+    df["voting_weight"].mask(
+        (df.is_trusted) & (df.is_public), VOTE_WEIGHT_TRUSTED_PUBLIC, inplace=True
+    )
+    df["voting_weight"].mask(
+        (df.is_trusted) & (~df.is_public), VOTE_WEIGHT_TRUSTED_PRIVATE, inplace=True
+    )
+
     global_scores = {}
-
-    df["voting_weight"] = 0 # Voting weight for non trusted users will be computed per entity
-    df["voting_weight"].mask(
-        (df.is_trusted) & (df.is_public),
-        VOTE_WEIGHT_TRUSTED_PUBLIC,
-        inplace=True
-    )
-    df["voting_weight"].mask(
-        (df.is_trusted) & (~df.is_public),
-        VOTE_WEIGHT_TRUSTED_PRIVATE,
-        inplace=True
-    )
-
-    for (uid, scores) in df.groupby("uid"):
+    for (entity_id, scores) in df.groupby("entity_id"):
         trusted_weight = scores["voting_weight"].sum()
         non_trusted_weight = (
             TOTAL_VOTE_WEIGHT_NONTRUSTED_DEFAULT
             + TOTAL_VOTE_WEIGHT_NONTRUSTED_FRACTION * trusted_weight
         )
         nb_non_trusted_public = (
-            scores["is_public"] & (scores["voting_right"] == 0)
+            scores["is_public"] & (scores["voting_weight"] == 0)
         ).sum()
         nb_non_trusted_private = (
-            ~scores["is_public"] & (scores["voting_right"] == 0)
+            ~scores["is_public"] & (scores["voting_weight"] == 0)
         ).sum()
 
-        scores["voting_weight"].mask(
-            scores["is_public"] & (scores["voting_right"] == 0),
-            min(
-                VOTE_WEIGHT_TRUSTED_PUBLIC,
-                2
-                * non_trusted_weight
-                / (2 * nb_non_trusted_public + nb_non_trusted_private),
-            ),
-            inplace=True,
-        )
-        scores["voting_weight"].mask(
-            ~scores["is_public"] & (scores["voting_right"] == 0),
-            min(
-                VOTE_WEIGHT_TRUSTED_PRIVATE,
-                non_trusted_weight
-                / (2 * nb_non_trusted_public + nb_non_trusted_private),
-            ),
-            inplace=True,
-        )
+        if (nb_non_trusted_private > 0) or (nb_non_trusted_public > 0):
+            scores["voting_weight"].mask(
+                scores["is_public"] & (scores["voting_weight"] == 0),
+                min(
+                    VOTE_WEIGHT_TRUSTED_PUBLIC,
+                    2
+                    * non_trusted_weight
+                    / (2 * nb_non_trusted_public + nb_non_trusted_private),
+                ),
+                inplace=True,
+            )
+            scores["voting_weight"].mask(
+                ~scores["is_public"] & (scores["voting_weight"] == 0),
+                min(
+                    VOTE_WEIGHT_TRUSTED_PRIVATE,
+                    non_trusted_weight
+                    / (2 * nb_non_trusted_public + nb_non_trusted_private),
+                ),
+                inplace=True,
+            )
 
         w = scores.voting_weight
         theta = scores.score
@@ -329,10 +308,12 @@ def get_scaled_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
         rho = QrMed(2 * W, w, theta, delta)
         rho_uncertainty = QrUnc(2 * W, 1, w, theta, delta, qr_med=rho)
         rho_deviation = QrDev(2 * W, 1, w, theta, delta, qr_med=rho)
-        global_scores[uid] = {
+        global_scores[entity_id] = {
             "score": rho,
             "uncertainty": rho_uncertainty,
             "deviation": rho_deviation,
         }
 
-    return pd.DataFrame(global_scores)
+    result = pd.DataFrame.from_dict(global_scores, orient="index")
+    result.index.name = "entity_id"
+    return result.reset_index()
