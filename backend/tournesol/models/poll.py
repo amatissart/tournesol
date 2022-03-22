@@ -26,9 +26,9 @@ class Poll(models.Model):
     entity_type = models.CharField(max_length=32, choices=ENTITY_TYPE_CHOICES)
     criterias = models.ManyToManyField("Criteria", through="CriteriaRank")
 
-    @property
-    def algorithm(self):
-        return ALGORITHM_LICCHAVI
+    # @property
+    # def algorithm(self):
+    #     return ALGORITHM_MEHESTAN
 
     @classmethod
     def default_poll(cls) -> "Poll":

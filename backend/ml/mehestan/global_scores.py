@@ -218,16 +218,22 @@ def get_scaling_for_supertrusted(ml_input: MlInput, individual_scores: pd.DataFr
 
 
 def get_global_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
+    if len(individual_scores) == 0:
+        return pd.DataFrame(columns=["entity_id", "score", "uncertainty", "deviation"])
+
     supertrusted_scaling = get_scaling_for_supertrusted(ml_input, individual_scores)
     rp = ml_input.get_ratings_properties()
 
-    non_supertrusted = rp[~rp.is_supertrusted]["user_id"].unique()
-    trusted_and_supertrusted = rp[(rp.is_supertrusted) | (rp.is_trusted)][
-        "user_id"
+    non_supertrusted = rp["user_id"][~rp.is_supertrusted].unique()
+    trusted_and_supertrusted = rp["user_id"][
+        (rp.is_supertrusted) | (rp.is_trusted)
     ].unique()
 
     rp.set_index(["user_id", "entity_id"], inplace=True)
-    df = individual_scores.join(rp, on=["user_id", "entity_id"], how="inner")
+    df = individual_scores.join(rp, on=["user_id", "entity_id"], how="left")
+    df["is_public"].fillna(False, inplace=True)
+    df["is_trusted"].fillna(False, inplace=True)
+    df["is_supertrusted"].fillna(False, inplace=True)
 
     df = df.join(supertrusted_scaling, on="user_id")
     df["s"].fillna(1, inplace=True)
@@ -313,6 +319,9 @@ def get_global_scores(ml_input: MlInput, individual_scores: pd.DataFrame):
             "uncertainty": rho_uncertainty,
             "deviation": rho_deviation,
         }
+
+    if len(global_scores) == 0:
+        return pd.DataFrame(columns=["entity_id", "score", "uncertainty", "deviation"])
 
     result = pd.DataFrame.from_dict(global_scores, orient="index")
     result.index.name = "entity_id"

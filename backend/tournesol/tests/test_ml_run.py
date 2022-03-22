@@ -65,9 +65,9 @@ class TestMlTrain(TestCase):
 
         call_command("ml_train")
 
-        self.assertEqual(EntityCriteriaScore.objects.count(), 22)
         self.assertEqual(EntityCriteriaScore.objects.filter(poll=self.poll).count(),20)
         self.assertEqual(EntityCriteriaScore.objects.filter(poll=Poll.default_poll()).count(),2)
+        self.assertEqual(EntityCriteriaScore.objects.count(), 22)
 
 
     def test_ml_train_skip_untrusted(self):
@@ -75,7 +75,7 @@ class TestMlTrain(TestCase):
         self.assertEqual(EntityCriteriaScore.objects.count(), 0)
         self.assertEqual(ContributorRatingCriteriaScore.objects.count(), 0)
 
-        call_command("ml_train", "--skip-untrusted")
+        call_command("ml_train", "--skip-untrusted", "--algorithm", "licchavi")
 
         self.assertEqual(EntityCriteriaScore.objects.count(), 22)
         self.assertEqual(ContributorRatingCriteriaScore.objects.count(), 24)
@@ -87,7 +87,7 @@ class TestMlTrain(TestCase):
         self.assertGreater(EntityCriteriaScore.objects.get(entity_id=self.video2.id).score, 0)
 
     def test_ml_train_on_trusted_and_all_users(self):
-        call_command("ml_train", "--skip-untrusted")
+        call_command("ml_train", "--skip-untrusted", "--algorithm", "licchavi")
 
         contributor_rating_user_1 = ContributorRating.objects.get(user=self.user1, entity=self.video1)
         contributor_rating_user_2 = ContributorRating.objects.get(user=self.user2, entity=self.video1)
@@ -95,7 +95,7 @@ class TestMlTrain(TestCase):
         contributor_rating_score_user_2 = ContributorRatingCriteriaScore.objects.get(contributor_rating=contributor_rating_user_2).score
 
         # Test on all user
-        call_command("ml_train")
+        call_command("ml_train", "--algorithm", "licchavi")
 
         # Check if trusted user contribution are not affected
         self.assertEqual(ContributorRatingCriteriaScore.objects.get(contributor_rating=contributor_rating_user_1).score,contributor_rating_score_user_1)
@@ -114,7 +114,7 @@ class TestMlTrain(TestCase):
         """
         self.assertEqual(self.video1.tournesol_score, None)
         self.assertEqual(self.video2.tournesol_score, None)
-        call_command("ml_train")
+        call_command("ml_train", "--algorithm", "licchavi")
         self.video1.refresh_from_db()
         self.video2.refresh_from_db()
         self.assertEqual(self.video1.tournesol_score, -4.1)

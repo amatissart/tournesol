@@ -64,7 +64,7 @@ class MlInputFromDb(MlInput):
     def __init__(self, poll_name):
         self.poll_name = poll_name
 
-    def get_comparisons(self, trusted_only=True, criteria=None) -> pd.DataFrame:
+    def get_comparisons(self, trusted_only=False, criteria=None) -> pd.DataFrame:
         scores_queryset = ComparisonCriteriaScore.objects.filter(
             comparison__poll__name=self.poll_name
         )
@@ -84,8 +84,11 @@ class MlInputFromDb(MlInput):
             entity_b=F("comparison__entity_2_id"),
             user_id=F("comparison__user_id"),
         )
-        df = pd.DataFrame(values)
-        return df[["user_id", "entity_a", "entity_b", "criteria", "score", "weight"]]
+        if len(values) > 0:
+            df = pd.DataFrame(values)
+            return df[["user_id", "entity_a", "entity_b", "criteria", "score", "weight"]]
+        else:
+            return pd.DataFrame(columns=["user_id", "entity_a", "entity_b", "criteria", "score", "weight"])
 
 
     def get_ratings_properties(self):
@@ -113,4 +116,6 @@ class MlInputFromDb(MlInput):
             "is_trusted",
             "is_supertrusted",
         )
+        if len(values) == 0:
+            return pd.DataFrame(columns=["user_id", "entity_id", "is_public", "is_trusted", "is_supertrusted"])
         return pd.DataFrame(values)
