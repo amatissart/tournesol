@@ -1,10 +1,15 @@
 import pandas as pd
 
 from ml.inputs import MlInput
-from ml.outputs import save_contributor_scores, save_entity_scores, save_tournesol_score_as_sum_of_criteria
+from ml.outputs import (
+    save_contributor_scores,
+    save_entity_scores,
+    save_tournesol_score_as_sum_of_criteria,
+)
 from tournesol.models import Poll
-from .individual import compute_individual_score
+
 from .global_scores import get_global_scores
+from .individual import compute_individual_score
 
 
 def get_individual_scores(ml_input: MlInput, criteria: str) -> pd.DataFrame:

@@ -1,10 +1,9 @@
-import logging
-import pandas as pd
 import numpy as np
+import pandas as pd
+
 from ml.inputs import MlInput
 
-
-from .primitives import BrMean, QrMed, QrUnc, QrDev
+from .primitives import BrMean, QrDev, QrMed, QrUnc
 
 W = 5.0
 

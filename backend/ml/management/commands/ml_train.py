@@ -5,9 +5,13 @@ from django.core.management.base import BaseCommand
 from core.models import User
 from ml.core import TOURNESOL_DEV, ml_run
 from ml.inputs import MlInputFromDb
-from ml.outputs import save_contributor_scores, save_entity_scores, save_tournesol_score_as_sum_of_criteria
-from tournesol.models import Poll
 from ml.mehestan.run import run_mehestan
+from ml.outputs import (
+    save_contributor_scores,
+    save_entity_scores,
+    save_tournesol_score_as_sum_of_criteria,
+)
+from tournesol.models import Poll
 from tournesol.models.poll import ALGORITHM_LICCHAVI, ALGORITHM_MEHESTAN
 
 """

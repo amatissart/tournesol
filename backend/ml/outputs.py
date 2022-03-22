@@ -1,16 +1,20 @@
-from numpy import single
 import pandas as pd
 from django.db import transaction
+
 from core.models import User
-from tournesol.models import EntityCriteriaScore, Entity, ContributorRating, ContributorRatingCriteriaScore
+from tournesol.models import (
+    ContributorRating,
+    ContributorRatingCriteriaScore,
+    Entity,
+    EntityCriteriaScore,
+)
 
 
 def save_entity_scores(poll, entity_scores, single_criteria=None):
     if isinstance(entity_scores, pd.DataFrame):
-        scores_iterator = (
-            entity_scores[["entity_id", "criteria", "score", "uncertainty"]]
-            .itertuples(index=False)
-        )
+        scores_iterator = entity_scores[
+            ["entity_id", "criteria", "score", "uncertainty"]
+        ].itertuples(index=False)
     else:
         scores_iterator = entity_scores
 
@@ -46,20 +50,23 @@ def save_tournesol_score_as_sum_of_criteria(poll):
     Entity.objects.bulk_update(entities, ["tournesol_score"])
 
 
-def save_contributor_scores(poll, contributor_scores, trusted_filter=None, single_criteria=None):
+def save_contributor_scores(
+    poll, contributor_scores, trusted_filter=None, single_criteria=None
+):
     if isinstance(contributor_scores, pd.DataFrame):
         scores_list = list(
-            contributor_scores[["user_id", "entity_id", "criteria", "score", "uncertainty"]]
-            .itertuples(index=False)
+            contributor_scores[
+                ["user_id", "entity_id", "criteria", "score", "uncertainty"]
+            ].itertuples(index=False)
         )
     else:
         scores_list = list(contributor_scores)
 
     rating_ids = {
         (contributor_id, video_id): rating_id
-        for rating_id, contributor_id, video_id in ContributorRating.objects.filter(poll=poll).values_list(
-            "id", "user_id", "entity_id"
-        )
+        for rating_id, contributor_id, video_id in ContributorRating.objects.filter(
+            poll=poll
+        ).values_list("id", "user_id", "entity_id")
     }
     ratings_to_create = set(
         (contributor_id, video_id)
@@ -78,15 +85,21 @@ def save_contributor_scores(poll, contributor_scores, trusted_filter=None, singl
         {(rating.user_id, rating.entity_id): rating.id for rating in created_ratings}
     )
 
-    scores_to_delete = ContributorRatingCriteriaScore.objects.filter(contributor_rating__poll=poll)
+    scores_to_delete = ContributorRatingCriteriaScore.objects.filter(
+        contributor_rating__poll=poll
+    )
     if trusted_filter is not None:
-        if trusted_filter == True:
-            scores_to_delete = scores_to_delete.filter(contributor_rating__user__in=User.trusted_users())
-        elif trusted_filter == False:
-            scores_to_delete = scores_to_delete.exclude(contributor_rating__user__in=User.trusted_users())
+        if trusted_filter is True:
+            scores_to_delete = scores_to_delete.filter(
+                contributor_rating__user__in=User.trusted_users()
+            )
+        elif trusted_filter is False:
+            scores_to_delete = scores_to_delete.exclude(
+                contributor_rating__user__in=User.trusted_users()
+            )
     if single_criteria is not None:
         scores_to_delete = scores_to_delete.filter(criteria=single_criteria)
-    
+
     with transaction.atomic():
         scores_to_delete.delete()
         ContributorRatingCriteriaScore.objects.bulk_create(
@@ -98,5 +111,3 @@ def save_contributor_scores(poll, contributor_scores, trusted_filter=None, singl
             )
             for contributor_id, video_id, criteria, score, uncertainty in scores_list
         )
-
-

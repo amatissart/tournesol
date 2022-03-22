@@ -1,30 +1,8 @@
-from django.db import transaction
-from django.db.models import F
 import numpy as np
 import pandas as pd
 
-
-from tournesol.models import (
-    ComparisonCriteriaScore,
-    ContributorRatingCriteriaScore,
-    ContributorRating,
-)
-
 R_MAX = 10
 ALPHA = 0.01
-
-
-def get_comparisons_scores(username, criteria):
-    public_dataset = pd.read_csv(
-        "~/workspace/data/tournesol_public_export_2022-02-18.csv"
-    )
-    df = public_dataset[
-        (public_dataset.public_username == username)
-        & (public_dataset.criteria == criteria)
-    ]
-    df = df[["video_a", "video_b", "score"]]
-    df.columns = ["entity_a", "entity_b", "score"]
-    return df
 
 
 def compute_individual_score(scores):
@@ -52,7 +30,7 @@ def compute_individual_score(scores):
     r_tilde2 = r_tilde ** 2
 
     # r.loc[a:b] is negative when a is prefered to b.
-    l = -1.0 * r_tilde / np.sqrt(1.0 - r_tilde2)
+    l = -1.0 * r_tilde / np.sqrt(1.0 - r_tilde2)  # noqa: E741
     k = (1.0 - r_tilde2) ** 3
 
     L = k.mul(l).sum(axis=1)
@@ -84,25 +62,3 @@ def compute_individual_score(scores):
     )
     result.index.name = "entity_id"
     return result
-
-
-# def save_individual_scores(user_id, scores):
-#     rating_ids = {
-#         entity_id: rating_id
-#         for rating_id, entity_id in ContributorRating.objects.filter(
-#             poll__name=POLL_NAME,
-#             user_id=user_id
-#         ).values_list("id", "entity_id")
-#     }
-
-#     with transaction.atomic():
-#         ContributorRatingCriteriaScore.objects.filter(
-#             contributor_rating__user_id=user_id,
-#             contributor_rating__poll__name=POLL_NAME,
-#             criteria=criteria
-#         )
-#         ratings = [
-#             ContributorRatingCriteriaScore(pk=entity_id,  )
-#             for entity_id, columns in scores.iterrows()
-#         ]
-#     # TODO

@@ -1,6 +1,7 @@
 from typing import Union
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from scipy.optimize import brentq
 
 EPSILON = 1e-6
