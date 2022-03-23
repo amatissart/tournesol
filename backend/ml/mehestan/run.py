@@ -30,14 +30,17 @@ def get_individual_scores(ml_input: MlInput, criteria: str) -> pd.DataFrame:
     return result[["user_id", "entity_id", "score", "uncertainty"]]
 
 
+def compute_mehestan_scores(ml_input, criteria):
+    indiv_scores = get_individual_scores(ml_input, criteria=criteria)
+    indiv_scores["criteria"] = criteria
+    global_scores = get_global_scores(ml_input, individual_scores=indiv_scores)
+    global_scores["criteria"] = criteria
+    return indiv_scores, global_scores
+
+
 def run_mehestan(ml_input: MlInput, poll: Poll):
     for criteria in poll.criterias_list:
-        indiv_scores = get_individual_scores(ml_input, criteria=criteria)
-        indiv_scores["criteria"] = criteria
-        global_scores = get_global_scores(ml_input, individual_scores=indiv_scores)
-        global_scores["criteria"] = criteria
-
+        indiv_scores, global_scores = compute_mehestan_scores(ml_input, criteria=criteria)
         save_contributor_scores(poll, indiv_scores, single_criteria=criteria)
         save_entity_scores(poll, global_scores, single_criteria=criteria)
-
     save_tournesol_score_as_sum_of_criteria(poll)
