@@ -24,7 +24,6 @@ def compute_individual_score(scores):
     )
 
     r = scores_sym.pivot(index="entity_a", columns="entity_b", values="score")
-    assert r.index.equals(r.columns)
 
     r_tilde = r / (1.0 + R_MAX)
     r_tilde2 = r_tilde ** 2
