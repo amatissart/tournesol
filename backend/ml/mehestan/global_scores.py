@@ -47,8 +47,9 @@ def get_user_scaling_weights(ml_input: MlInput):
     )
     return df["scaling_weight"].to_dict()
 
+
 def get_significantly_different_pairs(scores: pd.DataFrame):
-    # To optimize: this cross product may be expensive in memory
+    scores = scores[["uid", "score", "uncertainty"]]
     left, right = np.triu_indices(len(scores), k=1)
     pairs = (
         scores.iloc[left]
@@ -60,10 +61,10 @@ def get_significantly_different_pairs(scores: pd.DataFrame):
         )
     )
     pairs.set_index(["uid_a", "uid_b"], inplace=True)
-    pairs.query(
-        "abs(score_a - score_b) >= 2*(uncertainty_a + uncertainty_b)", inplace=True
-    )
-    return pairs
+    return pairs.loc[
+        np.abs(pairs.score_a - pairs.score_b)
+        >= 2 * (pairs.uncertainty_a + pairs.uncertainty_b)
+    ]
 
 
 def compute_scaling(
@@ -92,24 +93,26 @@ def compute_scaling(
     for (user_n, user_scores) in df[df.user_id.isin(users_to_compute)].groupby(
         "user_id"
     ):
-        user_scores.drop("user_id", axis=1, inplace=True)
-        user_scores_uids = set(user_scores.uid)
         s_nqm = []
         delta_s_nqm = []
         s_weights = []
-        for (user_m, m_scores) in df[df.user_id.isin(reference_users - {user_n})].groupby("user_id"):
-            m_scores.drop("user_id", axis=1, inplace=True)
+
+        ABn_all = get_significantly_different_pairs(user_scores)
+        user_scores_uids = set(ABn_all.index.get_level_values("uid_a")) | set(
+            ABn_all.index.get_level_values("uid_b")
+        )
+
+        for (user_m, m_scores) in df[
+            df.user_id.isin(reference_users - {user_n})
+        ].groupby("user_id"):
             common_uids = user_scores_uids.intersection(m_scores.uid)
 
             if len(common_uids) == 0:
                 continue
 
             m_scores = m_scores[m_scores.uid.isin(common_uids)]
-            n_scores = user_scores[user_scores.uid.isin(common_uids)]
-
-            ABn = get_significantly_different_pairs(n_scores)
             ABm = get_significantly_different_pairs(m_scores)
-            ABnm = ABn.join(ABm, how="inner", lsuffix="_n", rsuffix="_m")
+            ABnm = ABn_all.join(ABm, how="inner", lsuffix="_n", rsuffix="_m")
             if len(ABnm) == 0:
                 continue
             s_nqmab = np.abs(ABnm.score_a_m - ABnm.score_b_m) / np.abs(
@@ -155,12 +158,12 @@ def compute_scaling(
     for (user_n, user_scores) in df[df.user_id.isin(users_to_compute)].groupby(
         "user_id"
     ):
-        user_scores.drop("user_id", axis=1, inplace=True)
         tau_nqm = []
         delta_tau_nqm = []
         s_weights = []
-        for (user_m, m_scores) in df[df.user_id.isin(reference_users - {user_n})].groupby("user_id"):
-            m_scores.drop("user_id", axis=1, inplace=True)
+        for (user_m, m_scores) in df[
+            df.user_id.isin(reference_users - {user_n})
+        ].groupby("user_id"):
             common_uids = list(set(user_scores.uid).intersection(m_scores.uid))
 
             if len(common_uids) == 0:
