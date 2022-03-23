@@ -5,7 +5,7 @@ from ml.inputs import MlInput
 
 from .primitives import BrMean, QrDev, QrMed, QrUnc
 
-W = 5.0
+W = 20.0
 
 SCALING_WEIGHT_SUPERTRUSTED = W
 SCALING_WEIGHT_TRUSTED = 1.0
