@@ -6,8 +6,13 @@ from scipy.optimize import brentq
 
 EPSILON = 1e-6
 
-
 def QrMed(W: float, w: Union[pd.Series, float], x: pd.Series, delta: pd.Series):
+    if isinstance(w, pd.Series):
+        w = w.to_numpy()
+    if isinstance(x, pd.Series):
+        x = x.to_numpy()
+    if isinstance(delta, pd.Series):
+        delta = delta.to_numpy()
     delta_2 = delta ** 2
 
     def L_prime(m: float):
@@ -46,6 +51,13 @@ def QrUnc(
     delta: pd.Series,
     qr_med=None,
 ):
+    if isinstance(w, pd.Series):
+        w = w.to_numpy()
+    if isinstance(x, pd.Series):
+        x = x.to_numpy()
+    if isinstance(delta, pd.Series):
+        delta = delta.to_numpy()
+
     if qr_med is None:
         qr_med = QrMed(W, w, x, delta)
     qr_dev = QrDev(W, default_dev, w, x, delta, qr_med=qr_med)

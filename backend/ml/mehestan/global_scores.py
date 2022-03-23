@@ -47,6 +47,24 @@ def get_user_scaling_weights(ml_input: MlInput):
     )
     return df["scaling_weight"].to_dict()
 
+def get_significantly_different_pairs(scores: pd.DataFrame):
+    # To optimize: this cross product may be expensive in memory
+    left, right = np.triu_indices(len(scores), k=1)
+    pairs = (
+        scores.iloc[left]
+        .reset_index(drop=True)
+        .join(
+            scores.iloc[right].reset_index(drop=True),
+            lsuffix="_a",
+            rsuffix="_b",
+        )
+    )
+    pairs.set_index(["uid_a", "uid_b"], inplace=True)
+    pairs.query(
+        "abs(score_a - score_b) >= 2*(uncertainty_a + uncertainty_b)", inplace=True
+    )
+    return pairs
+
 
 def compute_scaling(
     df: pd.DataFrame,
@@ -57,24 +75,6 @@ def compute_scaling(
 ):
     scaling_weights = get_user_scaling_weights(ml_input)
     df = df.rename({"entity_id": "uid"}, axis=1)
-
-    def get_significantly_different_pairs(scores: pd.DataFrame):
-        # To optimize: this cross product may be expensive in memory
-        left, right = np.triu_indices(len(scores), k=1)
-        pairs = (
-            scores.iloc[left]
-            .reset_index(drop=True)
-            .join(
-                scores.iloc[right].reset_index(drop=True),
-                lsuffix="_a",
-                rsuffix="_b",
-            )
-        )
-        pairs.set_index(["uid_a", "uid_b"], inplace=True)
-        pairs.query(
-            "abs(score_a - score_b) >= 2*(uncertainty_a + uncertainty_b)", inplace=True
-        )
-        return pairs
 
     if users_to_compute is None:
         users_to_compute = set(df.user_id.unique())
@@ -89,16 +89,16 @@ def compute_scaling(
     s_dict = {}
     delta_s_dict = {}
 
-    for (user_n, user_scores) in df.groupby("user_id"):
-        if user_n not in users_to_compute:
-            continue
+    for (user_n, user_scores) in df[df.user_id.isin(users_to_compute)].groupby(
+        "user_id"
+    ):
         user_scores.drop("user_id", axis=1, inplace=True)
         user_scores_uids = set(user_scores.uid)
         s_nqm = []
         delta_s_nqm = []
         s_weights = []
-        for user_m in (u for u in reference_users if u != user_n):
-            m_scores = df[df.user_id == user_m].drop("user_id", axis=1)
+        for (user_m, m_scores) in df[df.user_id.isin(reference_users - {user_n})].groupby("user_id"):
+            m_scores.drop("user_id", axis=1, inplace=True)
             common_uids = user_scores_uids.intersection(m_scores.uid)
 
             if len(common_uids) == 0:
@@ -152,15 +152,15 @@ def compute_scaling(
 
     tau_dict = {}
     delta_tau_dict = {}
-    for (user_n, user_scores) in df.groupby("user_id"):
-        if user_n not in users_to_compute:
-            continue
+    for (user_n, user_scores) in df[df.user_id.isin(users_to_compute)].groupby(
+        "user_id"
+    ):
         user_scores.drop("user_id", axis=1, inplace=True)
         tau_nqm = []
         delta_tau_nqm = []
         s_weights = []
-        for user_m in (u for u in reference_users if u != user_n):
-            m_scores = df[df.user_id == user_m].drop("user_id", axis=1)
+        for (user_m, m_scores) in df[df.user_id.isin(reference_users - {user_n})].groupby("user_id"):
+            m_scores.drop("user_id", axis=1, inplace=True)
             common_uids = list(set(user_scores.uid).intersection(m_scores.uid))
 
             if len(common_uids) == 0:
