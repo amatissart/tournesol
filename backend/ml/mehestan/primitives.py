@@ -6,6 +6,7 @@ from scipy.optimize import brentq
 
 EPSILON = 1e-6
 
+
 def QrMed(W: float, w: Union[pd.Series, float], x: pd.Series, delta: pd.Series):
     if isinstance(w, pd.Series):
         w = w.to_numpy()
