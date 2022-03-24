@@ -7,9 +7,6 @@ ALPHA = 0.01
 
 def compute_individual_score(scores):
     scores = scores[["entity_a", "entity_b", "score"]]
-    if len(scores) <= 1:
-        return None
-
     scores_sym = pd.concat(
         [
             scores,
@@ -50,7 +47,7 @@ def compute_individual_score(scores):
         index=theta_star.index,
         columns=theta_star.index,
     )
-    sigma2 = np.nansum(k * (l - theta_star_ab) ** 2) / 2 / (len(scores) - 1)
+    sigma2 = (1.0 + (np.nansum(k * (l - theta_star_ab) ** 2) / 2)) / len(scores)
     delta_star = pd.Series(np.sqrt(sigma2) / np.sqrt(np.diag(K)), index=K.index)
 
     result = pd.DataFrame(
